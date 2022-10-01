@@ -20,12 +20,12 @@ Scuwl minimizes its memory footprint by processing HTML as it goes and updating 
 
 ## Installation
 
-```bash
-  python -m pip install scuwl
+```
+  $ python -m pip install scuwl
 ```
     
 ## Usage
-```bash
+```
 $ scuwl -h
 usage: scuwl.py [-h] [-d DEPTH] [-H HEADERS] [-m MIN_LENGTH] [-o OUTFILE]
                 [-P PROXY] [-p] [-u USER_AGENT] [-v]
@@ -57,7 +57,7 @@ options:
 
 ## Examples
 
-```bash
+```
 Generate wordlist and send to stdout
 
 $ scuwl https://github.com/petebuffon/scuwl
@@ -69,7 +69,7 @@ track
 ...
 ```
 
-```bash
+```
 Generate wordlist and save as wordlist.txt
 
 $ scuwl -o wordlist.txt https://github.com/petebuffon/scuwl
@@ -77,7 +77,7 @@ $ wc -l wordlist.txt
 122 wordlist.txt
 ```
 
-```bash
+```
 Keep punctuation
 
 $ scuwl -p -o wordlist.txt https://github.com/petebuffon/scuwl
@@ -89,7 +89,7 @@ devops
 user
 ```
 
-```bash
+```
 Use a crawl depth of one (scrapes all links from input webpage)
 
 $ scuwl -d 1 -o wordlist.txt https://github.com/petebuffon/scuwl
