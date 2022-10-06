@@ -113,12 +113,10 @@ class Scraper:
         for tag in tags:
             for word in tag.split():
                 if len(word) >= self.args.min_length and len(word) <= self.args.max_length:
-                        if self.args.alpha:
-                            if word.isalpha():
-                                yield word
-                        else:
-                            if word.isascii():
-                                yield word
+                    if self.args.alpha and word.isalpha():
+                        yield word
+                    elif word.isascii():
+                        yield word
 
     def is_visible_tag(self, element):
         """Returns True if tag is visible."""
