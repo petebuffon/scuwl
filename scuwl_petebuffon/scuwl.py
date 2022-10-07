@@ -1,6 +1,7 @@
 """💀SCuWl💀, Simple custom wordlist generator."""
 import argparse
 import asyncio
+from hashlib import blake2b
 import json
 from signal import SIGINT, SIGTERM
 from string import punctuation
@@ -8,7 +9,8 @@ from urllib.parse import urlparse, urlunparse
 import aiohttp
 from bs4 import BeautifulSoup, Comment
 
-__version__ = "1.0"
+__version__ = "1.1"
+TRANS_TABLE = str.maketrans("", "", punctuation)
 
 
 def parse_arguments():
@@ -41,9 +43,9 @@ class Scraper:
         self.args = args
         self.client = client
         self.url = urlparse(args.url)
+        self.urls = set()
         self.sem = asyncio.Semaphore(60)
         self.wordlist = set()
-        self.trans_table = str.maketrans("", "", punctuation)
         self.tasks = []
 
     async def fetch(self, url):
@@ -75,7 +77,7 @@ class Scraper:
         """Extracts words from soup object."""
         visible_tags = soup.find_all(string=self.is_visible_tag)
         if self.args.punctuation:
-            tags = (tag.lower().translate(self.trans_table) for tag in visible_tags)
+            tags = (tag.lower().translate(TRANS_TABLE) for tag in visible_tags)
         else:
             tags = (tag.lower() for tag in visible_tags)
         self.wordlist.update(self.filter_words(tags))
@@ -86,15 +88,21 @@ class Scraper:
         for link in links:
             if link.text:
                 if self.url.netloc in link["href"]:
-                    yield link["href"]
+                    url = link["href"]
                 elif link["href"].startswith("/") and not link["href"].startswith("/", 1):
-                    yield self.build_url(link["href"])
+                    url = self.build_url(link["href"])
+                else:
+                    continue
+                _hash = blake2b(url.encode("utf8"), digest_size=32).digest()
+                if _hash not in self.urls:
+                    self.urls.add(_hash)
+                    yield url
 
     def extract_tables(self, soup):
         """Extracts tables from soup object."""
         tables = soup.find_all("table")
         if self.args.punctuation:
-            text = (table.text.lower().translate(self.trans_table) for table in tables)
+            text = (table.text.lower().translate(TRANS_TABLE) for table in tables)
         else:
             text = (table.text.lower() for table in tables)
         self.wordlist.update(self.filter_words(text))
