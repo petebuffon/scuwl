@@ -3,13 +3,14 @@ import argparse
 import asyncio
 from hashlib import blake2b
 import json
+from pkg_resources import get_distribution
 from signal import SIGINT, SIGTERM
 from string import punctuation
 from urllib.parse import urlparse, urlunparse
 import aiohttp
 from bs4 import BeautifulSoup, Comment
 
-__version__ = "1.1"
+__version__ = get_distribution("scuwl").version
 TRANS_TABLE = str.maketrans("", "", punctuation)
 
 
