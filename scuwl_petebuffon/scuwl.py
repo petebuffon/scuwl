@@ -55,7 +55,7 @@ class Scraper:
             try:
                 async with self.client.get(url, proxy=self.args.proxy) as resp:
                     return await resp.text() if (resp.status == 200) else ""
-            except Exception:
+            except aiohttp.ClientError:
                 return ""
 
     async def recursive_scrape(self, url, depth):
