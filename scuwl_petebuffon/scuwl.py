@@ -5,7 +5,7 @@ from hashlib import blake2b
 import json
 from signal import SIGINT, SIGTERM
 from string import punctuation
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse
 from pkg_resources import get_distribution
 import aiohttp
 from bs4 import BeautifulSoup, Comment
@@ -32,6 +32,8 @@ def parse_arguments():
                         help="retains punctutation in words")
     parser.add_argument("-t", "--tables", action="store_true",
                         help="extract words from tables only, default=False")
+    parser.add_argument("-T", "--timeout", type=int, default=20,
+                        help="session timeout for each request")
     parser.add_argument("-u", "--user-agent", type=str, help="user-agent string for client")
     parser.add_argument("-v", "--version", action="version",
                         version=f"%(prog)s {__version__}")
@@ -40,12 +42,12 @@ def parse_arguments():
 
 class Scraper:
     """Asynchronus web scraper."""
-    def __init__(self, args, client):
+    def __init__(self, args, session):
         self.args = args
-        self.client = client
         self.url = urlparse(args.url)
         self.urls = set()
         self.sem = asyncio.Semaphore(60)
+        self.session = session
         self.wordlist = set()
         self.tasks = []
 
@@ -53,9 +55,15 @@ class Scraper:
         """Fetches text from website."""
         async with self.sem:
             try:
-                async with self.client.get(url, proxy=self.args.proxy) as resp:
-                    return await resp.text() if (resp.status == 200) else ""
-            except aiohttp.ClientError:
+                async with self.session.get(url, proxy=self.args.proxy) as resp:
+                    if resp.status == 200:
+                        content_type = resp.headers.get("Content-Type", "")
+                        if "text/html" in content_type or not content_type:
+                            return await resp.text()
+                    else:
+                        return ""
+            except (aiohttp.ClientError, UnicodeDecodeError,
+                    AssertionError, asyncio.exceptions.TimeoutError):
                 return ""
 
     async def recursive_scrape(self, url, depth):
@@ -88,12 +96,15 @@ class Scraper:
         links = soup.find_all("a", href=True)
         for link in links:
             if link.text:
-                if self.url.netloc in link["href"]:
-                    url = link["href"]
-                elif link["href"].startswith("/") and not link["href"].startswith("/", 1):
-                    url = self.build_url(link["href"])
-                else:
+                if link["href"].endswith(".svg") or link["href"].endswith(".jpg"):
                     continue
+                if self.url.netloc in link["href"]:
+                    if link["href"].startswith("//"):
+                        url = urljoin((self.url.scheme + "://" + self.url.netloc), link["href"])
+                    else:
+                        url = link["href"]
+                elif not link["href"].startswith("#"):
+                    url = urljoin((self.url.scheme + "://" + self.url.netloc), link["href"])
                 _hash = blake2b(url.encode("utf8"), digest_size=32).digest()
                 if _hash not in self.urls:
                     self.urls.add(_hash)
@@ -112,10 +123,6 @@ class Scraper:
         """Writes wordlist set to outfile."""
         with open(self.args.outfile, "w", encoding="utf8") as file:
             file.writelines(f"{word}\n" for word in self.wordlist)
-
-    def build_url(self, path):
-        """Builds url from path and globals."""
-        return urlunparse((self.url.scheme, self.url.netloc, path, None, "", ""))
 
     def filter_words(self, tags):
         """Filters out words based on CLI flags."""
@@ -159,8 +166,9 @@ async def generate_wordlist():
     headers = json.loads(args.headers)
     if args.user_agent:
         headers["user-agent"] = args.user_agent
-    async with aiohttp.ClientSession(headers=headers) as client:
-        scraper = Scraper(args, client)
+    timeout = aiohttp.ClientTimeout(total=args.timeout)
+    async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        scraper = Scraper(args, session)
         try:
             await scraper.recursive_scrape(args.url, 0)
             await asyncio.gather(*scraper.tasks)
