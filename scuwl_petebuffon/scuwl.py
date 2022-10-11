@@ -6,6 +6,7 @@ import json
 from signal import SIGINT, SIGTERM
 from string import punctuation
 from urllib.parse import urljoin, urlparse
+import urllib.robotparser
 from pkg_resources import get_distribution
 import aiohttp
 from bs4 import BeautifulSoup, Comment
@@ -34,7 +35,8 @@ def parse_arguments():
                         help="extract words from tables only, default=False")
     parser.add_argument("-T", "--timeout", type=int, default=20,
                         help="session timeout for each request")
-    parser.add_argument("-u", "--user-agent", type=str, help="user-agent string for client")
+    parser.add_argument("-u", "--user-agent", type=str, default="scuwl/" + __version__,
+                        help="user-agent string for client")
     parser.add_argument("-v", "--version", action="version",
                         version=f"%(prog)s {__version__}")
     return parser.parse_args()
@@ -44,12 +46,13 @@ class Scraper:
     """Asynchronus web scraper."""
     def __init__(self, args, session):
         self.args = args
-        self.url = urlparse(args.url)
-        self.urls = set()
         self.sem = asyncio.Semaphore(60)
         self.session = session
-        self.wordlist = set()
+        self.url = urlparse(args.url)
+        self.robotparser = build_robotparser(self.url.netloc)
+        self.urls = set()
         self.tasks = []
+        self.wordlist = set()
 
     async def fetch(self, url):
         """Fetches text from website."""
@@ -105,6 +108,8 @@ class Scraper:
                         url = link["href"]
                 elif not link["href"].startswith("#"):
                     url = urljoin((self.url.scheme + "://" + self.url.netloc), link["href"])
+                if not self.robotparser.can_fetch(self.session.headers["user-agent"], url):
+                    continue
                 _hash = blake2b(url.encode("utf8"), digest_size=32).digest()
                 if _hash not in self.urls:
                     self.urls.add(_hash)
@@ -143,6 +148,14 @@ class Scraper:
         )
 
 
+def build_robotparser(netloc):
+    """Builds robotparser from netloc"""
+    robotparser = urllib.robotparser.RobotFileParser()
+    robotparser.set_url("https://" + netloc + "/robots.txt")
+    robotparser.read()
+    return robotparser
+
+
 def shutdown():
     """Shuts down running loop."""
     loop = asyncio.get_running_loop()
@@ -164,9 +177,9 @@ async def generate_wordlist():
     args = parse_arguments()
     add_signal_handlers()
     headers = json.loads(args.headers)
-    if args.user_agent:
-        headers["user-agent"] = args.user_agent
+    headers["user-agent"] = args.user_agent
     timeout = aiohttp.ClientTimeout(total=args.timeout)
+
     async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
         scraper = Scraper(args, session)
         try:
